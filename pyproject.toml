@@ -9,7 +9,7 @@ description = "MCP server for controlling WLED devices"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "mcp>=1.2.0",
+    "mcp>=2.0.0",
     "httpx>=0.25.0",
     "anyio>=3.0.0"
 ]

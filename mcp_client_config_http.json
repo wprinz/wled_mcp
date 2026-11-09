@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "wled": {
+      "url": "http://SERVER-IP:8000/mcp"
+    }
+  }
+}

@@ -37,9 +37,10 @@ cd wled_mcp
 2. Install dependencies:
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate      # Windows: .venv\\Scripts\\activate pip install -e .
 pip install -e .
 ```
-
 ## Quick Start
 
 ### 1. Configure Your WLED Device
@@ -75,6 +76,28 @@ Add this configuration to your Claude Desktop MCP settings:
   }
 }
 ```
+
+### 3b. Run as an HTTP server (for agents / remote use)
+
+Instead of being started by the client via stdio, the server can run permanently on its own machine and be reached over HTTP (MCP "streamable HTTP"):
+
+```bash
+export WLED_HOST=192.168.1.100
+python -m wled_mcp.server --transport streamable-http --host 0.0.0.0 --port 8000
+# or: wled-mcp --transport streamable-http --host 0.0.0.0 --port 8000
+```
+
+The endpoint is then `http://<server-ip>:8000/mcp`. Options can also be set via environment variables: `MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT`, `MCP_PATH`, `WLED_HOST`. Default bind address is `127.0.0.1` (local only).
+
+Connect an agent/client by URL, e.g.:
+
+```json
+{ "mcpServers": { "wled": { "url": "http://<server-ip>:8000/mcp" } } }
+```
+
+Claude Code: `claude mcp add --transport http wled http://<server-ip>:8000/mcp`
+
+**Security:** the server has **no authentication**. Anyone who can reach the port can control your lights (and `wled_set_state` accepts arbitrary state JSON). Only expose it in a trusted network/VPN or behind a reverse proxy with auth. When binding to a non-loopback address, set `MCP_ALLOWED_HOSTS=server-ip:8000,server.lan:8000` to enable Host-header checking; otherwise it is disabled.
 
 ### 4. Start Controlling Your WLED
 
@@ -154,23 +177,21 @@ await wled_activate_preset(3)
 ### Common Issues
 
 - **Connection Errors**:
-
+  
   - Ensure your WLED device is powered on and connected to the same network
   - Verify the IP address is correct (check your router or WLED web interface)
   - Test connectivity with `ping <WLED_IP>`
-
 - **Environment Variable Issues**:
-
+  
   - Make sure `WLED_HOST` is set correctly: `export WLED_HOST=192.168.1.100`
   - On Windows: `set WLED_HOST=192.168.1.100`
-
 - **Tool/Command Errors**:
-
+  
   - Use `wled_get_effects()` to see available effect IDs (usually 0-100+)
   - Use `wled_get_presets()` to see available preset IDs (1-250)
   - Check device capabilities with `wled_get_info()`
-
 - **Claude Desktop Integration**:
+  
   - Restart Claude Desktop after updating MCP configuration
   - Check that Python is in your system PATH
   - Verify the MCP server starts without errors
@@ -216,3 +237,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - ✅ Distribution allowed
 - ✅ Private use allowed
 - ❌ No liability or warranty provided
+

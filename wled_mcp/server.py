@@ -1,11 +1,12 @@
 """WLED MCP Server implementation."""
 
+import argparse
 import json
 import os
 from typing import Any, Dict, Optional
 import logging
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from .wled_client import WLEDClient
 
 # Configure logging to stderr
@@ -13,7 +14,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Initialize MCP server
-mcp = FastMCP("WLED Controller")
+mcp = MCPServer("WLED Controller")
 
 def get_wled_client(host: Optional[str] = None) -> WLEDClient:
     """Get WLED client instance."""
@@ -248,6 +249,69 @@ async def wled_set_state(state_json: str, host: Optional[str] = None) -> str:
         return f"Error: {str(e)}"
 
 
-def main():
-    """Run the WLED MCP server."""
-    mcp.run(transport="stdio")
+def main(argv: Optional[list] = None) -> None:
+    """Run the WLED MCP server (stdio by default, or over HTTP)."""
+    parser = argparse.ArgumentParser(description="WLED MCP server")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http", "sse"],
+        default=os.getenv("MCP_TRANSPORT", "stdio"),
+        help="Transport (default: stdio, env MCP_TRANSPORT)",
+    )
+    parser.add_argument(
+        "--host",
+        default=os.getenv("MCP_HOST", "127.0.0.1"),
+        help="Bind address for HTTP transports; use 0.0.0.0 to listen on all interfaces (env MCP_HOST)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("MCP_PORT", "8000")),
+        help="Port for HTTP transports (env MCP_PORT)",
+    )
+    parser.add_argument(
+        "--path",
+        default=os.getenv("MCP_PATH", "/mcp"),
+        help="URL path of the streamable-http endpoint (env MCP_PATH)",
+    )
+    args = parser.parse_args(argv)
+
+    if args.transport == "stdio":
+        mcp.run(transport="stdio")
+    elif args.transport == "streamable-http":
+        logger.info("Serving MCP on http://%s:%s%s", args.host, args.port, args.path)
+        mcp.run(
+            transport="streamable-http",
+            host=args.host,
+            port=args.port,
+            streamable_http_path=args.path,
+            transport_security=_transport_security(args.host),
+        )
+    else:
+        logger.info("Serving MCP (SSE) on http://%s:%s", args.host, args.port)
+        mcp.run(transport="sse", host=args.host, port=args.port)
+
+
+def _transport_security(host: str):
+    """Allow remote Host headers when bound to a non-loopback address.
+
+    The SDK's DNS-rebinding protection only accepts localhost Host headers by
+    default, which would reject requests from other machines.
+    """
+    if host in ("127.0.0.1", "localhost", "::1"):
+        return None
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    extra = [h for h in os.getenv("MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]
+    if not extra:
+        # No allow-list configured: disable Host check (use a firewall/proxy).
+        return TransportSecuritySettings(enable_dns_rebinding_protection=False)
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[h.strip() for h in extra],
+        allowed_origins=[],
+    )
+
+
+if __name__ == "__main__":
+    main()
